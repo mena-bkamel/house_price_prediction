@@ -13,6 +13,20 @@ else:
     st.error(f"Model file not found at {MODEL_PATH}")
     st.stop()
 
+
+def get_feature_names(pipeline, input_features):
+    preprocessor = pipeline.named_steps["preprocessor"]
+    feature_names = []
+
+    for name, transformer, col in preprocessor.transformers_:
+        if name == 'num':
+            # For numeric transformer, output same names
+            feature_names.extend(col)
+    return feature_names
+
+
+
+
 st.title("🏠 House Price Prediction")
 
 # Input form
@@ -30,7 +44,6 @@ airconditioning = st.sidebar.selectbox("Air Conditioning", ['yes', 'no'], index=
 parking = st.sidebar.number_input("Parking Spaces", min_value=0, max_value=4, value=1)
 prefarea = st.sidebar.selectbox("Preferred Area", ['yes', 'no'], index=0)
 furnishingstatus = st.sidebar.selectbox("Furnishing Status", ['furnished', 'semi-furnished', 'unfurnished'], index=1)
-
 
 if st.sidebar.button("Predict Price"):
     input_data = {
@@ -58,7 +71,7 @@ if st.sidebar.button("Predict Price"):
         df[feature] = df[feature].map({'yes': 1, 'no': 0})
 
     # Feature engineering
-    df['price_per_sqft'] = 0 # Placeholder
+    df['price_per_sqft'] = 0  # Placeholder
     df['room_ratio'] = df['bedrooms'] / df['bathrooms'].replace(0, 1)
 
     # One-hot encode furnishingstatus
@@ -76,29 +89,36 @@ if st.sidebar.button("Predict Price"):
         if col not in df.columns:
             df[col] = 0
 
-    df =df[expected_columns]
+    df = df[expected_columns]
 
     try:
         prediction = model.predict(df)
         price = prediction[0]
         price_per_sqft = price / area
 
-        st.success(f"### Predicted Price: {price: ,.2f}")
-        st.info(f"**Price per sqft: {price_per_sqft: ,.2f}")
+        st.success(f"### Predicted Price: ${price: ,.2f}")
+        st.info(f"**Price per sqft:** ${price_per_sqft: ,.2f}")
 
         # Feature importance
         if hasattr(model.named_steps['model'], 'feature_importances_'):
-            st.subheader("Feature Importance")
-            importances = model.named_steps['model'].feature_importances_
-            importances_df = pd.DataFrame({
-                'Feature': expected_columns,
-                'importance': importances
-            }).sort_values(by='importance', ascending=False)
-            st.bar_chart(importances_df.set_index('Feature'))
+            st.subheader('Feature Importance')
+            try:
+                feature_names = get_feature_names(model, df.columns)
+                importances = model.named_steps['model'].feature_importances_
+
+                if len(feature_names) == len(importances):
+                    importances_df = pd.DataFrame({
+                        'Feature': feature_names,
+                        'importance': importances
+                    }).sort_values(by='importance', ascending=False)
+                    st.bar_chart(importances_df.set_index('Feature'))
+                else:
+                    st.warning("Mismatch between feature names and importances.")
+            except Exception as e:
+                st.error(f"Error retrieving feature importances: {str(e)}")
 
     except Exception as e:
         st.error(f" An error occurred: {str(e)}")
-
 
 # Add documentation
 st.markdown("""
@@ -111,6 +131,3 @@ This tool predicts house prices based on:
 
 The model was trained using Gradient Boosting algorithm.
 """)
-
-
-
